@@ -1,0 +1,280 @@
+---
+title: "Project2"
+output: html_document
+date: "2023-11-14"
+---
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(nycflights13)
+```
+```{r}
+UA_flights <- flights %>% 
+  filter(carrier=="UA")
+UA_flights <- UA_flights %>%
+  filter(!is.na(dep_delay))
+UA_flights <- UA_flights %>%
+  filter(!is.na(arr_delay))
+
+```
+```{r}
+UA_flights<- UA_flights %>%
+  mutate(netGain= dep_delay - arr_delay)
+```
+```{r}
+summary(UA_flights$netGain)
+hist(UA_flights$netGain)
+```
+```{r}
+UA_flights<- UA_flights %>%
+  mutate(late = ifelse(dep_delay > 0, 1, 0),
+           very_late = ifelse(dep_delay > 30, 1, 0),
+         not_late=ifelse(dep_delay<=0,1,0),
+         not_verylate=ifelse(dep_delay<=30,1,0))
+```
+```{r}
+ggplot(UA_flights, aes(x = netGain)) +
+  geom_histogram(binwidth = 2) +
+  facet_wrap(~ late) +
+  labs(title = "NetGain Distribution for late flights")
+ggplot(UA_flights, aes(x = netGain)) +
+  geom_histogram(binwidth = 2) +
+  facet_wrap(~ very_late) +
+  labs(title = "NetGain Distribution for very late flights")
+ggplot(UA_flights, aes(x = netGain)) +
+  geom_histogram(binwidth = 2) +
+  facet_wrap(~ not_late) +
+  labs(title = "NetGain Distribution for flights with no delay")
+ggplot(UA_flights, aes(x = netGain)) +
+  geom_histogram(binwidth = 2) +
+  facet_wrap(~ not_verylate) +
+  labs(title = "NetGain Distribution for flights which are not very late")
+```
+```{r}
+late1 <- UA_flights$late == 1
+veryLate1 <- UA_flights$very_late==1
+notLate1 <- UA_flights$not_late==1
+notveryLate1 <- UA_flights$not_verylate==1
+avGainLate<- mean(UA_flights$netGain[late1])
+cat('Average gain for flights that are late: ',avGainLate,'\n')
+avGainVeryLate<- mean(UA_flights$netGain[veryLate1])
+cat('Average gain for flights that are very late: ',avGainVeryLate,'\n')
+avGainNotLate<- mean(UA_flights$netGain[notLate1])
+cat('Average gain for flights that are not late: ',avGainNotLate,'\n')
+avGainNotVeryLate<- mean(UA_flights$netGain[notveryLate1])
+cat('Average gain for flights that are not very late: ',avGainNotVeryLate,'\n')
+
+```
+
+```{r}
+glimpse(UA_flights)
+# Permutation Tests for late vs not late
+observed <- avGainLate - avGainNotLate
+N <- 10^4 - 1
+
+result <- numeric(N)
+sample.size <- nrow(UA_flights)
+group.1.size <- nrow(UA_flights[UA_flights$late==1,])
+for(i in 1:N)
+{
+  index <- sample(sample.size, size=group.1.size, replace = FALSE)
+  result[i] <- mean(UA_flights$netGain[index], na.rm = TRUE) - mean(UA_flights$netGain[-index], na.rm = TRUE)
+}
+p <- 2 * (sum(result <= observed) + 1) / (N + 1)
+p
+```
+#### We can see from the p value that it is very less than the standard value of 0.05, so we will reject the null hypothesis and say that there is a difference of average gain between late flights and not late flights
+```{r}
+observed1 <- avGainVeryLate - avGainNotVeryLate
+N <- 10^4 - 1
+
+result1 <- numeric(N)
+sample.size <- nrow(UA_flights)
+group.1.size <- nrow(UA_flights[UA_flights$very_late==1,])
+for(i in 1:N)
+{
+  index1 <- sample(sample.size, size=group.1.size, replace = FALSE)
+  result1[i] <- mean(UA_flights$netGain[index1], na.rm = TRUE) - mean(UA_flights$netGain[-index1], na.rm = TRUE)
+}
+p <- 2 * (sum(result1 <= observed1) + 1) / (N + 1)
+p
+```
+#### We can see from the p value that it is very less than the standard value of 0.05, so we will reject the null hypothesis and say that there is a difference of average gain between very late flights and not very late flights
+
+```{r}
+NYOriginFlights<- c('LGA', 'EWR', 'JFK')
+
+commonFlights <- UA_flights %>% 
+  filter(origin %in% NYOriginFlights) %>%
+  group_by(dest) %>%
+  summarise(count = n()) %>%
+  arrange(desc(count)) %>%
+  slice_head(n = 5)
+
+glimpse(commonFlights)
+```
+```{r}
+CommonFlightGain <- subset(UA_flights, dest %in% commonFlights$dest, select = c("dest", "netGain"))
+CommonFlightGain %>%
+  ggplot(aes(x = netGain,fill=dest)) + 
+    geom_bar() +
+    facet_wrap(~dest) +
+    ggtitle('Net Gain Distribution') +
+    xlab('netGain')
+
+```
+```{r}
+AirDen<-UA_flights %>%
+  filter(dest=="DEN")
+t.test(AirDen$netGain)$conf
+```
+```{r}
+AirIAH<-UA_flights %>%
+  filter(dest=="IAH")
+t.test(AirIAH$netGain)$conf
+```
+```{r}
+AirLAX<-UA_flights %>%
+  filter(dest=="LAX")
+t.test(AirLAX$netGain)$conf
+```
+```{r}
+AirORD<-UA_flights %>%
+  filter(dest=="ORD")
+t.test(AirORD$netGain)$conf
+```
+```{r}
+AirSFO<-UA_flights %>%
+  filter(dest=="SFO")
+t.test(AirSFO$netGain)$conf
+```
+
+
+```{r}
+CommonFlightGain %>%
+  group_by(dest) %>%
+  summarize(AvgGain = mean(netGain, na.rm = TRUE))
+```
+```{r}
+UA_flights$DurationHrs<- UA_flights$air_time/60
+UA_flights <- UA_flights %>%
+  mutate(gainPerHour = netGain/DurationHrs)
+```
+
+```{r}
+late2 <- UA_flights$late == 1
+veryLate2 <- UA_flights$very_late==1
+notLate2 <- UA_flights$not_late==1
+notveryLate2 <- UA_flights$not_verylate==1
+avGainPerHourLate<- mean(UA_flights$gainPerHour[late2])
+cat('Average gain per hour for flights that are late: ',avGainPerHourLate,'\n')
+avGainPerHourVeryLate<- mean(UA_flights$gainPerHour[veryLate2])
+cat('Average gain per hour for flights that are very late: ',avGainPerHourVeryLate,'\n')
+avGainPerHourNotLate<- mean(UA_flights$gainPerHour[notLate2])
+cat('Average gain per hour for flights that are not late: ',avGainPerHourNotLate,'\n')
+avGainPerHourNotVeryLate<- mean(UA_flights$gainPerHour[notveryLate2])
+cat('Average gain per hour for flights that are not very late: ',avGainPerHourNotVeryLate,'\n')
+```
+```{r}
+LateFlights1 <-UA_flights %>%
+  filter(late==1)
+ggplot(data = LateFlights1, mapping = aes(x = gainPerHour)) +
+  geom_histogram(color = "white")+
+  xlab('Gain Per Hour for Late Flights')
+NotLateFlights1 <-UA_flights %>%
+  filter(late==0)
+ggplot(data = NotLateFlights1, mapping = aes(x = gainPerHour)) +
+  geom_histogram(color = "white")+
+  xlab('Gain Per Hour for Not Late Flights')
+VeryLateFlights1 <-UA_flights %>%
+  filter(very_late==1)
+ggplot(data = VeryLateFlights1, mapping = aes(x = gainPerHour)) +
+  geom_histogram(color = "white")+
+  xlab('Gain Per Hour for Very Late Flights')
+NotVeryLateFlights1 <-UA_flights %>%
+  filter(late==0)
+ggplot(data = NotVeryLateFlights1, mapping = aes(x = gainPerHour)) +
+  geom_histogram(color = "white")+
+  xlab('Gain Per Hour for Not Very Late Flights')
+```
+
+
+
+```{r}
+#### Permutation Tests
+observed2 <- avGainPerHourLate - avGainPerHourNotLate
+N <- 10^4 - 1
+
+result2 <- numeric(N)
+sample.size <- nrow(UA_flights)
+group.1.size <- nrow(UA_flights[UA_flights$late==1,])
+for(i in 1:N)
+{
+  index2 <- sample(sample.size, size=group.1.size, replace = FALSE)
+  result2[i] <- mean(UA_flights$gainPerHour[index2], na.rm = TRUE) - mean(UA_flights$gainPerHour[-index2], na.rm = TRUE)
+}
+p <- 2 * (sum(result2 <= observed2) + 1) / (N + 1)
+p
+```
+```{r}
+observed3 <- avGainPerHourVeryLate - avGainPerHourNotVeryLate
+N <- 10^4 - 1
+
+result3 <- numeric(N)
+sample.size <- nrow(UA_flights)
+group.1.size <- nrow(UA_flights[UA_flights$very_late==1,])
+for(i in 1:N)
+{
+  index3 <- sample(sample.size, size=group.1.size, replace = FALSE)
+  result3[i] <- mean(UA_flights$gainPerHour[index3], na.rm = TRUE) - mean(UA_flights$gainPerHour[-index3], na.rm = TRUE)
+}
+p <- 2 * (sum(result3 <= observed3) + 1) / (N + 1)
+p
+```
+
+```{r}
+MeanFlightDuration<- mean(UA_flights$air_time)
+MeanFlightDuration
+UA_flights<- UA_flights %>%
+  mutate(l = ifelse(air_time < MeanFlightDuration, 1, 0),
+           longFlights = ifelse(air_time >= MeanFlightDuration, 1, 0),
+         shortFlights = ifelse(air_time <= MeanFlightDuration, 1, 0))
+```
+```{r}
+ggplot(UA_flights, aes(x = gainPerHour)) +
+  geom_histogram(binwidth = 2) +
+  facet_wrap(~ shortFlights) +
+  labs(title = "Gain per hour Distribution for short flights")
+```
+```{r}
+shortGain <- UA_flights$shortFlights == 1
+longGain <- UA_flights$longFlights==1
+avGainPerHourShort<- mean(UA_flights$gainPerHour[shortGain])
+cat('Average gain per hour for short flights: ',avGainPerHourShort,'\n')
+avGainPerHourLong<- mean(UA_flights$gainPerHour[longGain])
+cat('Average gain per hour for long flights: ',avGainPerHourLong,'\n')
+```
+
+```{r}
+#### Permutation Tests
+observed4 <- avGainPerHourLong - avGainPerHourShort
+
+N <- 10^4 - 1
+
+result4 <- numeric(N)
+
+sample.size <- nrow(UA_flights)
+
+group.1.size <- nrow(UA_flights[UA_flights$shortFlights==1,])
+
+for(i in 1:N)
+{
+  index4 <- sample(sample.size, size=group.1.size, replace = FALSE)
+  result4[i] <- mean(UA_flights$gainPerHour[index4], na.rm = TRUE) - mean(UA_flights$gainPerHour[-index4], na.rm = TRUE)
+}
+
+p <- 2 * (sum(result4 <= observed4) + 1) / (N + 1)
+p
+```
+
